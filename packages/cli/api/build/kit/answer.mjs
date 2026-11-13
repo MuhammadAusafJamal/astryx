@@ -11,7 +11,7 @@
  */
 
 import {firstSentence} from '../../../foundation/text/string-utils.mjs';
-import {FOUNDATION, FRAME} from './signals.mjs';
+import {alwaysOn} from './signals.mjs';
 
 /**
  * Fewer offerable results than this and the kit says how to look further.
@@ -86,6 +86,7 @@ export function kitAnswer(
         }
       : undefined;
 
+  const {frame, foundation} = alwaysOn();
   const answer = (/** @type {typeof named} */ list) => ({
     type: /** @type {const} */ ('build.kit'),
     data: {
@@ -99,8 +100,8 @@ export function kitAnswer(
       pages: signals.pages,
       blocks: list,
       domain: signals.domain,
-      frame: FRAME,
-      foundation: FOUNDATION,
+      frame,
+      foundation,
       hint,
     },
   });

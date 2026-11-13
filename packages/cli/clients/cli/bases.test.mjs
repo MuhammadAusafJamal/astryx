@@ -944,3 +944,115 @@ describe('a command that refuses outside a project', () => {
     SLOW,
   );
 });
+
+describe('a non-Core base shows no Core outside its content', () => {
+  it(
+    'names no Core frame or foundation components in build',
+    () => {
+      const dir = project({'@acme/native-ui': CONTENT_BASE});
+      const json = astryx(['--json', 'build', 'a settings page'], dir);
+      expect(json.status).toBe(0);
+      expect(json.json().data).toMatchObject({frame: [], foundation: []});
+      const text = astryx(['build', 'a settings page'], dir);
+      expect(text.stdout).not.toMatch(/^frame:/mu);
+      expect(text.stdout).not.toMatch(/^foundation:/mu);
+    },
+    SLOW,
+  );
+
+  it(
+    'names the active base as the package of the hook and swizzle lists',
+    () => {
+      const dir = project({'@acme/native-ui': CONTENT_BASE});
+      const hooks = astryx(['--json', 'hook', '--list'], dir);
+      expect(hooks.status).toBe(0);
+      expect(hooks.json().package).toBe('@acme/native-ui');
+      const swizzle = astryx(['--json', 'swizzle', '--list'], dir);
+      expect(swizzle.status).toBe(0);
+      expect(swizzle.json().package).toBe('@acme/native-ui');
+    },
+    SLOW,
+  );
+
+  it(
+    "upgrades to the base's version with the codemods of integrations that build on it",
+    () => {
+      /** @param {string} name */
+      const codemod = name => ({
+        [`codemods/2.0.0/${name}.mjs`]: `export default {type: 'code', title: '${name}', transform: file => file.source};\n`,
+      });
+      const dir = project({
+        '@acme/native-ui': {
+          manifest: "export default {base: {}, codemods: './codemods'};\n",
+          files: codemod('native-ui'),
+        },
+        '@acme/native-charts': {
+          manifest: "export default {codemods: './codemods'};\n",
+          peers: {'@acme/native-ui': '*'},
+          files: codemod('native-charts'),
+        },
+        '@acme/web-charts': {
+          manifest: "export default {codemods: './codemods'};\n",
+          peers: {'@astryxdesign/core': '*'},
+          files: codemod('web-charts'),
+        },
+      });
+      write(
+        path.join(dir, 'astryx.config.mjs'),
+        "export default {integrations: ['@acme/native-ui', '@acme/native-charts']};\n",
+      );
+      write(path.join(dir, 'src', 'a.js'), 'export const a = 1;\n');
+      const r = astryx(
+        [
+          '--json',
+          'upgrade',
+          '--from',
+          '1.0.0',
+          '--integration',
+          '@acme/web-charts',
+          '--path',
+          'src',
+        ],
+        dir,
+      );
+      expect(r.status).toBe(0);
+      expect(r.json().data).toMatchObject({
+        from: '1.0.0',
+        to: '2.1.0',
+        codemods: 2,
+        integrations: ['@acme/native-ui', '@acme/native-charts'],
+      });
+      const current = astryx(['--json', 'upgrade', '--from', '2.1.0'], dir);
+      expect(current.status).toBe(0);
+      expect(current.json().data).toMatchObject({
+        status: 'up_to_date',
+        to: '2.1.0',
+      });
+    },
+    SLOW,
+  );
+
+  it(
+    'checks in doctor that the active base is installed, and no Core or Core themes',
+    () => {
+      const dir = project({'@acme/native-ui': CONTENT_BASE});
+      const r = astryx(['--json', 'doctor'], dir);
+      const checks = r.json().data.checks;
+      expect(checks.find(c => c.id === 'base-installed')).toMatchObject({
+        status: 'pass',
+        label: '@acme/native-ui installed',
+      });
+      const ids = checks.map(c => c.id);
+      for (const id of [
+        'core-installed',
+        'version-alignment',
+        'themes',
+        'peer-deps',
+      ]) {
+        expect(ids).not.toContain(id);
+      }
+      expect(JSON.stringify(checks)).not.toContain('@astryxdesign/core');
+    },
+    SLOW,
+  );
+});

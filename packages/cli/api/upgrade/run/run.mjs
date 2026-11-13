@@ -63,6 +63,7 @@ import {
 } from '../../../foundation/fs/path-safety.mjs';
 import {createFileProtectionResolver} from '../../../foundation/fs/file-protection.mjs';
 import {withoutProtected} from '../../../assets/codemods/runner.mjs';
+import {currentNonCoreBase} from '../../../foundation/bases/state.mjs';
 
 /**
  * Collapse per-codemod protection hits into one stable row per file.
@@ -590,8 +591,11 @@ export async function run(options = {}, {cwd = process.cwd(), origin} = {}) {
   }
   const installed = detectInstalledTargetVersion(cwd);
   if (!installed) {
+    const base = currentNonCoreBase();
     // Outside a project there is no version to install (spec AST-081 FR3).
-    const msg = isOutsideProject(cwd)
+    const msg = base
+      ? `Could not read the installed version of ${base.name}, the active base. Install it first, then rerun \`${getCliInvocation()} upgrade --from <old-version>\`.`
+      : isOutsideProject(cwd)
       ? 'Could not find installed @astryxdesign/core (or legacy @xds/core). This folder is outside a project; upgrade migrates the code of an app project that installs @astryxdesign/core.'
       : `Could not find installed @astryxdesign/core (or legacy @xds/core). Install the target version first, then rerun \`${getCliInvocation()} upgrade --from <old-version>\`.`;
     logger.error(msg);

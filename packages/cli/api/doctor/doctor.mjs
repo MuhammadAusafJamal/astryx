@@ -125,6 +125,7 @@ import {
 } from './_adapter.mjs';
 import {checkBuilt} from './built-checks.mjs';
 import {coreOnlyDocNames} from '../../foundation/bases/core-docs.mjs';
+import {currentNonCoreBase} from '../../foundation/bases/state.mjs';
 
 /**
  * @typedef {'pass'|'warn'|'fail'|'info'} DoctorStatus
@@ -307,10 +308,20 @@ export function checkNodeVersion(ctx) {
 
 /**
  * Check 2 — @astryxdesign/core is installed and resolvable from the project.
+ * A run whose base is not Core checks that base instead, as it reads no Core.
  * @param {DoctorContext} ctx
  * @returns {DoctorCheck}
  */
 export function checkCoreInstalled(ctx) {
+  const base = currentNonCoreBase();
+  if (base) {
+    return {
+      id: 'base-installed',
+      label: `${base.name} installed`,
+      status: 'pass',
+      message: `${base.name}, the active base, resolved${base.version ? ` (v${base.version})` : ''}.`,
+    };
+  }
   const found = Boolean(ctx.coreDir);
   const version = pkgVersion(ctx.coreDir);
   return {
@@ -330,10 +341,12 @@ export function checkCoreInstalled(ctx) {
 
 /**
  * Check 3 — installed @astryxdesign/core is in step with @astryxdesign/cli (major/minor drift).
+ * Left out of a run whose base is not Core.
  * @param {DoctorContext} ctx
- * @returns {DoctorCheck}
+ * @returns {DoctorCheck | null}
  */
 export function checkVersionAlignment(ctx) {
+  if (currentNonCoreBase()) return null;
   // A project with no CLI of its own and no Core installed yet (a fresh
   // clone) is compared by the Core it locks or declares, as the daily hint
   // compares it (spec AST-081 FR2).
@@ -896,10 +909,12 @@ export function checkAgentDocs(ctx) {
 
 /**
  * Check 8 — @astryxdesign/core peer dependencies are satisfied by installed packages.
+ * Left out of a run whose base is not Core.
  * @param {DoctorContext} ctx
- * @returns {DoctorCheck}
+ * @returns {DoctorCheck | null}
  */
 export function checkPeerDeps(ctx) {
+  if (currentNonCoreBase()) return null;
   if (!ctx.coreDir) {
     return {
       id: 'peer-deps',
@@ -2592,10 +2607,14 @@ export async function runChecks(options = {}) {
     if (check) checks.push(check);
     if (fn === checkVersionAlignment) {
       const appThemeChecks = await checkAppThemes(cwd);
-      checks.push(
-        checkThemes(cwd, appThemeChecks, await themeImportWiring(cwd)),
-        ...appThemeChecks,
-      );
+      // The `themes` check counts Core's theme packages, so a run whose base
+      // is not Core leaves it out.
+      if (!currentNonCoreBase()) {
+        checks.push(
+          checkThemes(cwd, appThemeChecks, await themeImportWiring(cwd)),
+        );
+      }
+      checks.push(...appThemeChecks);
       checks.push(await checkConfig(ctx));
     }
   }

@@ -18,6 +18,7 @@ import {
   searchedComponents,
 } from '../../search/search.mjs';
 import {coreDirOrThrow} from '../../error.mjs';
+import {currentNonCoreBase} from '../../../foundation/bases/state.mjs';
 import {getResultCoverage} from '../../search/coverage.mjs';
 import {CORE_PROVIDER_ID} from '../../../foundation/identity/providers.mjs';
 import {
@@ -80,7 +81,16 @@ export const FOUNDATION = [
   'Divider',
 ];
 
-const ALWAYS = new Set([...FRAME, ...FOUNDATION]);
+/**
+ * The always-on names for the run's base. They are Core components, so a
+ * run whose base is not Core names none of them.
+ * @returns {{frame: string[], foundation: string[]}}
+ */
+export function alwaysOn() {
+  return currentNonCoreBase()
+    ? {frame: [], foundation: []}
+    : {frame: FRAME, foundation: FOUNDATION};
+}
 
 /**
  * @typedef {import('../../search/search.type.mjs').SearchResultEntry} SearchResultEntry
@@ -180,12 +190,14 @@ export async function kitSignals(query, options = {}) {
   const blocks = searchedBlocks
     .filter(r => r.score >= DOMAIN_FLOOR)
     .slice(0, 5);
+  const {frame, foundation} = alwaysOn();
+  const always = new Set([...frame, ...foundation]);
   const domain = results
     .filter(
       r =>
         (r.domain === 'component' || r.domain === 'hook') &&
         r.score >= DOMAIN_FLOOR &&
-        !ALWAYS.has(r.name),
+        !always.has(r.name),
     )
     .slice(0, 6);
   const directMatch =

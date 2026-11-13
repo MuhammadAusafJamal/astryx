@@ -56,6 +56,7 @@ import {resolveProviders} from '../../foundation/integrations/provider-resolutio
 import {warnOnIntegrationIssues} from '../../foundation/integrations/integration-warnings.mjs';
 import {logger} from '../logger.mjs';
 import {currentNonCoreBase} from '../../foundation/bases/state.mjs';
+import {runBase, splitForBase} from '../../foundation/bases/resolve.mjs';
 
 /** The package that owns Core's components, hooks, and codemods. */
 export {CORE_PROVIDER_ID as CORE_PACKAGE} from '../../foundation/identity/providers.mjs';
@@ -198,11 +199,16 @@ function rebaseDeclaration(rebase) {
  * name before the legacy one, then Yarn Plug'n'Play. A Core above a project
  * no workspace lists does not count, so a nested project that has not
  * installed its own reports nothing installed. With no Astryx project, only
- * the node_modules of `cwd` itself is read, as released versions did.
+ * the node_modules of `cwd` itself is read, as released versions did. A run
+ * whose base is not Core targets that base's installed version instead.
  * @param {string} cwd
  * @returns {{version: string, packageName: string}|null}
  */
 export function detectInstalledTargetVersion(cwd) {
+  const base = currentNonCoreBase();
+  if (base) {
+    return base.version ? {version: base.version, packageName: base.name} : null;
+  }
   const found = findProjectPackageOf(cwd, ['@astryxdesign/core', '@xds/core']);
   if (!found) return null;
   try {
@@ -763,7 +769,7 @@ export async function loadProjectContext(cwd, extraIntegrationSpecs = []) {
       : // Resolved from the project, as --integration names a package it
         // installed, not from whichever folder the process started in.
         await loadIntegrations(extraSpecs, {cwd, resolveProviders: false});
-  const {integrations, ledger} = resolveProviders(
+  const resolved = resolveProviders(
     [
       ...candidates,
       ...installed.map(integration => ({
@@ -779,6 +785,14 @@ export async function loadProjectContext(cwd, extraIntegrationSpecs = []) {
     ],
     {codemods: true, prior: providerLedgerOf(project)},
   );
+  const {ledger} = resolved;
+  // On a base other than Core, only integrations that are that base or build
+  // on it run codemods, the --integration packages included.
+  const run = runBase();
+  const integrations =
+    run.ok && !run.base.core
+      ? splitForBase(resolved.integrations, run.base).kept
+      : resolved.integrations;
   return {
     postCodemodHooks,
     integrations,

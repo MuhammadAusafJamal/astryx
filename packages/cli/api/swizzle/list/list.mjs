@@ -9,6 +9,7 @@
  */
 
 import {CORE_PACKAGE, resolveCore} from '../_adapter.mjs';
+import {currentNonCoreBase} from '../../../foundation/bases/state.mjs';
 
 /**
  * List swizzlable components discoverable from `cwd`'s @astryxdesign/core.
@@ -17,5 +18,9 @@ import {CORE_PACKAGE, resolveCore} from '../_adapter.mjs';
  */
 export function swizzleList(cwd = process.cwd()) {
   const {components} = resolveCore(cwd);
-  return {type: 'swizzle.list', package: CORE_PACKAGE, data: components};
+  return {
+    type: 'swizzle.list',
+    package: currentNonCoreBase()?.name ?? CORE_PACKAGE,
+    data: components,
+  };
 }
