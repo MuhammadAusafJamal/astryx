@@ -2815,6 +2815,17 @@ async function extractThemeDefinition(filePath, interception, /** @type {any} */
   }
 }
 
+/**
+ * Load a theme source as it is written, with no Core interception: what a
+ * base's `themes.compile` step receives.
+ * @param {string} filePath
+ * @returns {Promise<{theme: unknown, exportName: string}>}
+ */
+export async function loadThemeSource(filePath) {
+  const {theme, exportName} = await extractThemeDefinition(filePath);
+  return {theme, exportName: exportName ?? 'default'};
+}
+
 /** Names a theme module's exports must take; ends a shape failure. */
 const THEME_EXPORT_FIX =
   "Export the theme object: `export default defineTheme({name: 'my-theme', tokens: {...}})`, or a plain `export default {name: 'my-theme', tokens: {...}}`.";

@@ -35,8 +35,9 @@ export function missingSteps(base, steps) {
  *   and value, when an argument value declares the step
  * @property {string[]} requires every step that part declares
  * @property {string[]} missing the steps the base does not serve
- * @property {'not-declared' | 'failed-to-load'} reason
- * @property {string | null} module the adapter module that failed to load
+ * @property {'not-declared' | 'failed-to-load' | 'not-exported'} reason
+ * @property {string | null} module the adapter module that failed to load,
+ *   or that does not export a step the base lists
  * @property {{name: string, version: string | null}} base
  */
 
@@ -84,6 +85,8 @@ export function longFlag(flag) {
 /**
  * Run the check for one command run. A step passes when the base serves it,
  * declares its capability's adapter, the module loads, and it exports the step.
+ * A function the module exports for a step the base does not list is never
+ * handed over.
  * Core's steps are the CLI's own, so Core passes every step with no load.
  * @param {string} command
  * @param {import('../../authoring/doctypes/command/type').CommandDoc | undefined} doc
@@ -100,6 +103,8 @@ export async function checkRequirements(command, doc, given, base) {
     const missing = [];
     /** @type {string | null} */
     let failedModule = null;
+    /** @type {string | null} */
+    let unexportedModule = null;
     for (const step of part.requires) {
       const capability = capabilityOf(step);
       const file = base.adapters[capability];
@@ -117,6 +122,9 @@ export async function checkRequirements(command, doc, given, base) {
         }
       }
       if (typeof adapters[capability][exportOf(step)] !== 'function') {
+        // The base lists the step, so the module is wrong, not the base's
+        // declaration: name the module.
+        unexportedModule = file;
         missing.push(step);
       }
     }
@@ -129,8 +137,12 @@ export async function checkRequirements(command, doc, given, base) {
           argument: part.argument,
           requires: part.requires,
           missing,
-          reason: failedModule ? 'failed-to-load' : 'not-declared',
-          module: failedModule,
+          reason: failedModule
+            ? 'failed-to-load'
+            : unexportedModule
+              ? 'not-exported'
+              : 'not-declared',
+          module: failedModule ?? unexportedModule,
           base: {name: base.name, version: base.version},
         },
       };
@@ -169,6 +181,10 @@ export function refusalLine(requirement) {
       : `astryx ${requirement.command}`;
   const steps = requirement.missing.join(', ');
   const noun = requirement.missing.length === 1 ? 'step' : 'steps';
+  if (requirement.reason === 'not-exported') {
+    const it = requirement.missing.length === 1 ? 'it' : 'them';
+    return `${part} needs the ${steps} ${noun}; the active base ${requirement.base.name} lists ${it} but ${requirement.module} does not export ${it}.`;
+  }
   if (requirement.reason === 'failed-to-load') {
     return `${part} needs the ${steps} ${noun}; the active base ${requirement.base.name} declares it in ${requirement.module}, which does not load.`;
   }

@@ -91,7 +91,13 @@ import {
   commandAvailable,
   exampleAvailable,
   helpBase,
+  runStepCall,
 } from '../lib/base-gate.mjs';
+import {
+  baseAppModuleRenderer,
+  baseThemingTargets,
+  themeBuildOnBase,
+} from '../../../api/theme/base/base.mjs';
 import {defineCommand} from '../lib/define-command.mjs';
 import {NO_RESULT_SET, resultSet} from '../../../foundation/debug/index.mjs';
 import {doc as themeGroup} from './theme.doc.mjs';
@@ -663,7 +669,8 @@ function printThemeApp(result) {
     ),
   );
   for (const note of result.data.notes ?? []) emit(text(`[note] ${note}`));
-  if (!change.firstAdd) return;
+  // How an app applies the module is the base's setup, not Core's.
+  if (!change.firstAdd || currentNonCoreBase()) return;
   const stem = path.basename(modulePath, path.extname(modulePath));
   emit(
     text('Wire the generated module once in the app root:'),
@@ -976,6 +983,100 @@ function registerPaletteCommands(
 }
 
 /**
+ * The app-module renderer `theme add`, `use`, and `remove` pass on a base
+ * other than Core; nothing on Core, which renders its own module.
+ * @returns {{renderModule?: import('../../../api/theme/_adapter.mjs').ThemeModuleRenderer}}
+ */
+function baseModuleOption() {
+  const stepCall = runStepCall();
+  return stepCall ? {renderModule: baseAppModuleRenderer(stepCall)} : {};
+}
+
+/**
+ * `theme build` on a base other than Core: each source through the base's
+ * `themes.compile` step, in argument order, stopping at the first failure.
+ * @param {string[]} files
+ * @param {{out?: string, watch?: boolean, check?: boolean, iconsSpecifier?: string, family?: boolean}} options
+ * @param {import('../../../api/base/call-step.mjs').StepCall} stepCall
+ * @param {boolean} json
+ * @param {ThemeCommandWords} words
+ */
+async function buildOnBase(files, options, stepCall, json, words) {
+  const unsupported = options.family
+    ? '--family'
+    : options.watch
+      ? '--watch'
+      : options.out && files.length > 1
+        ? '--out with several files'
+        : null;
+  if (unsupported) {
+    return cliError(
+      `${unsupported} is not available on the active base ${stepCall.base.name}. Build each theme once.`,
+      {code: ERROR_CODES.ERR_THEME_INVALID},
+    );
+  }
+  /** @type {Array<{file: string, receipt: import('../../../api/theme/theme.type.mjs').ThemeBaseBuildResponse | import('../../../api/theme/theme.type.mjs').ThemeBuildCheckResponse}>} */
+  const results = [];
+  for (const file of files) {
+    try {
+      results.push({
+        file,
+        receipt: await themeBuildOnBase(file, options, stepCall),
+      });
+    } catch (e) {
+      const err = /** @type {import('../../../api/error.mjs').AstryxError} */ (
+        e
+      );
+      if (files.length > 1) err.message = `${file}: ${err.message}`;
+      return themeError(err, words);
+    }
+  }
+  const stale = results.some(
+    ({receipt}) =>
+      receipt.type === 'theme.build.check' && !receipt.data.upToDate,
+  );
+  if (json) {
+    if (results.length === 1) jsonOut(results[0].receipt);
+    else {
+      /** @type {import('../../../api/theme/theme.type.mjs').ThemeBuildBatchResponse} */
+      const batch = {
+        type: 'theme.build.batch',
+        data: {count: results.length, results},
+      };
+      jsonOut(batch);
+    }
+  } else {
+    for (const {receipt} of results) {
+      if (receipt.type === 'theme.build.check') {
+        const {name, upToDate, stale: outdated} = receipt.data;
+        emit(
+          text(
+            upToDate
+              ? `[ok] ${name} is up to date.`
+              : `[fail] ${name}: ${outdated.map(item => `${item.path} (${item.reason})`).join(', ')}`,
+          ),
+        );
+        continue;
+      }
+      const {outputs, tokenCount, componentCount, warnings, notices} =
+        receipt.data;
+      for (const output of outputs) {
+        emit(text(`[ok] ${output.path} (${output.role})`));
+      }
+      emit(
+        text(
+          `${tokenCount} token overrides, ${componentCount} component overrides.`,
+        ),
+      );
+      for (const warning of warnings) emit(text(`[warn] ${warning}`));
+      for (const notice of notices) emit(text(`[note] ${notice}`));
+    }
+  }
+  if (stale) process.exitCode = 1;
+  return NO_RESULT_SET;
+}
+
+/**
  * Register build, list, add, remove, use, eject, template and targets.
  * @param {import('commander').Command} theme
  * @param {import('commander').Command} program
@@ -1057,6 +1158,11 @@ function registerThemeCommands(theme, program, docs, words) {
                     ),
                   ],
         });
+      }
+
+      const stepCall = runStepCall();
+      if (stepCall) {
+        return buildOnBase(files, options, stepCall, json, words);
       }
 
       /**
@@ -1552,6 +1658,7 @@ function registerThemeCommands(theme, program, docs, words) {
                 import: options.import,
                 cwd: process.cwd(),
                 package: options.package,
+                ...baseModuleOption(),
               });
       } catch (e) {
         const err =
@@ -1593,7 +1700,10 @@ function registerThemeCommands(theme, program, docs, words) {
       /** @type {import('../../../api/theme/theme.type.mjs').ThemeAppResponse} */
       let result;
       try {
-        result = await themeRemove(slug, {cwd: process.cwd()});
+        result = await themeRemove(slug, {
+          cwd: process.cwd(),
+          ...baseModuleOption(),
+        });
       } catch (e) {
         const err =
           /** @type {import('../../../api/error.mjs').AstryxError} */ (e);
@@ -1616,7 +1726,10 @@ function registerThemeCommands(theme, program, docs, words) {
       /** @type {import('../../../api/theme/theme.type.mjs').ThemeAppResponse} */
       let result;
       try {
-        result = await themeUse(slug, {cwd: process.cwd()});
+        result = await themeUse(slug, {
+          cwd: process.cwd(),
+          ...baseModuleOption(),
+        });
       } catch (e) {
         const err =
           /** @type {import('../../../api/error.mjs').AstryxError} */ (e);
@@ -1753,7 +1866,11 @@ function registerThemeCommands(theme, program, docs, words) {
       /** @type {import('../../../api/theme/theme.type.mjs').ThemeTargetsResponse} */
       let result;
       try {
-        result = await themeTargets(filter, {cwd: process.cwd()});
+        const stepCall = runStepCall();
+        result = await themeTargets(filter, {
+          cwd: process.cwd(),
+          ...(stepCall ? {collect: () => baseThemingTargets(stepCall)} : {}),
+        });
       } catch (e) {
         const err =
           /** @type {import('../../../api/error.mjs').AstryxError} */ (e);

@@ -299,6 +299,8 @@ export function refusesHereFirst(doc, cwd) {
 /** The adapters the check loaded for the running command. */
 let checkedAdapters =
   /** @type {Record<string, Record<string, unknown>>} */ ({});
+/** The base the check passed the running command on, when it is not Core. */
+let checkedBase = /** @type {ActiveBase | null} */ (null);
 
 /**
  * The adapters of the run's base that the check loaded, by capability. A
@@ -311,6 +313,16 @@ export function runAdapters() {
 }
 
 /**
+ * What a command needs to call a step of the run's base, or null when the
+ * run's base is Core, whose steps the command performs itself.
+ * @returns {import('../../../api/base/call-step.mjs').StepCall | null}
+ */
+export function runStepCall() {
+  if (checkedBase == null) return null;
+  return {base: checkedBase, adapters: checkedAdapters, cwd: process.cwd()};
+}
+
+/**
  * The check, as a preAction hook: resolve the run's base, then check the
  * command, each given option, and each given argument value against it.
  * The first failure ends the run.
@@ -320,6 +332,7 @@ export function runAdapters() {
  */
 export async function checkRun(program, actionCommand) {
   checkedAdapters = {};
+  checkedBase = null;
   if (actionCommand === program) {
     // A bare run declares no step, but it answers from the run's base.
     const resolution = runBase();
@@ -347,7 +360,10 @@ export async function checkRun(program, actionCommand) {
     base,
   );
   if (!verdict.ok) refuseRequirement(verdict.requirement);
-  else checkedAdapters = verdict.adapters;
+  else {
+    checkedAdapters = verdict.adapters;
+    checkedBase = base;
+  }
 }
 
 /**

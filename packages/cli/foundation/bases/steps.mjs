@@ -3,7 +3,8 @@
 /**
  * @file The closed list of platform steps a base can serve.
  * @input nothing
- * @output BASE_STEPS, BASE_CAPABILITIES, and helpers that read a step name
+ * @output BASE_STEPS, BASE_CAPABILITIES, CALLED_STEPS, and helpers that
+ *   read a step name
  * @position foundation/bases — the step vocabulary that command docs, base
  *   declarations, the requirement check, and help share
  */
@@ -13,6 +14,18 @@ export {
   BASE_STEPS,
 } from '../../authoring/integration/base-steps.mjs';
 import {BASE_STEPS} from '../../authoring/integration/base-steps.mjs';
+
+/**
+ * The steps a command calls on a base other than Core. A base serves only
+ * these, whatever else it declares: a command that needs any other step
+ * runs only on Core.
+ * @type {readonly import('../../authoring/integration/type').BaseStep[]}
+ */
+export const CALLED_STEPS = Object.freeze([
+  'themes.targets',
+  'themes.compile',
+  'themes.appModule',
+]);
 
 /**
  * @param {string} value
