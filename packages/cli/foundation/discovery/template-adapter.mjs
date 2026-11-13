@@ -43,6 +43,7 @@ import {persistedGather} from '../fs/gather-cache.mjs';
 import {EXACT_CODEC} from '../fs/exact-codec.mjs';
 import {hostedRun} from '../runtime/package-root.mjs';
 import {babelParser} from '../runtime/lazy-dependencies.mjs';
+import {currentNonCoreBase} from '../bases/state.mjs';
 
 /** Identity used for core (built-in) templates in package-scoped listings. */
 const CORE_PACKAGE = CORE_PROVIDER_ID;
@@ -1188,6 +1189,8 @@ export function findPageDocFile(dirPath) {
 }
 
 async function discoverPages() {
+  // Core's content shows only in a run whose base is Core.
+  if (currentNonCoreBase()) return [];
   if (!fs.existsSync(PAGES_DIR)) return [];
   const dirs = listDirEntries(PAGES_DIR).filter(e => e.isDirectory());
 
@@ -1216,6 +1219,8 @@ async function discoverPages() {
 }
 
 async function discoverBlocks() {
+  // Core's content shows only in a run whose base is Core.
+  if (currentNonCoreBase()) return [];
   const docFiles = findDocFiles(BLOCKS_DIR, TEMPLATE_SUFFIX_RE);
   /** @type {DiscoveredTemplate[]} */
   const blocks = [];
